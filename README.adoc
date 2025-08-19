@@ -1,1 +1,148 @@
 = Manipulate visual element from QML in C++
+We saw that we can make use of QML inside of console application, still we don't really know how we can visualize the QML file.
+
+:toc:
+:sectnums:
+
+== Introduction
+As of now, we dealt with console application in order to fetch values of types present inside of the QML file, this is going to be the first iteration of how you can manipulate visual element from C++, and the visual element is going to be a QML element.
+
+== Content
+This application is going to be a console application which contains a qml file, a way to introspect it.
+
+=== Content of the QML file
+Here's going to be the QML file that is going to be a simple item with a rectangle into it:
+
+```qml
+import QtQuick
+
+Item {
+    objectName: "root"
+    Rectangle {
+        objectName: "rect"
+        width: 200
+        height: 200
+        color: "yellowgreen"
+        border.color: "green"
+        border.width: 3
+    }
+}
+```
+
+We are going to render the following QML file into our C++ program using the `QQuickView` class.
+
+=== Content of the C++ 
+The C++ as said above will try to introspect the qml file, and also display it using the `QQuickView` class, like this:
+
+```cpp
+QQuickView *po_view = new QQuickView{};
+po_view->setSource(QUrl{"qrc:/qml/main.qml"});
+// If you want to display
+// po_view->show();
+
+QObject *po_rootObject = o_view.rootObject();
+qDebug() << "Debug object is the following: " << po_rootObject->objectName();
+```
+
+== QQuickView 
+`QQuickView` is a convenience class of the `QQuickWindow` which will automatically render and display the QML scene when given the URL of the main source file. Alternatively, you can instantiate your own objects using the `QQmlComponent` class and place them on a manually setup of `QQuickWindow`
+
+=== Usage
+```cpp
+int main(int argc, char **argv) {
+    QGuiApplication o_app{argc, argv};
+    
+    QQuickView *po_view = new QQuickView{ this };
+    po_view->setSource(QUrl{"qrc:/qml/main.qml"});
+    po_view->show();
+}
+```
+
+NOTE: As you can see in the above snippet, the `QQuickView::setSource` will look for a resource url. That's because as our application is a console one, we need to create a resource file with  a name (in our case) to be `main.qml`
+
+In order to receive status changed when you are loading and executing your qml application using `QQuickView`, you can connect it to the signal named link:https://doc.qt.io/qt-6/qquickview.html#statusChanged[`statusChanged()`] and monitor for link:https://doc.qt.io/qt-6/qquickview.html#Status-enum[QQuickView::Error]. The errors are available using the link:https://doc.qt.io/qt-6/qquickview.html#errors[QQuickView::errors()].
+
+QQuickView also manages sizing of the view and root object. By default the link:https://doc.qt.io/qt-6/qquickview.html#resizeMode-prop[resizeMode] in link:https://doc.qt.io/qt-6/qquickview.html#ResizeMode-enum[SizeViewToRootObject] which will load the component and resize it to the size of the view. Alternatively the link:https://doc.qt.io/qt-6/qquickview.html#resizeMode-prop[resizeMode] may be set to link:https://doc.qt.io/qt-6/qquickview.html#ResizeMode-enum[SizeRootObjectToView] which will resize the view to the size of the root object.
+
+Once we display the qml file, we can also get the root object using this view:
+
+```cpp
+QQuickView *po_view = new QQuickView{ this };
+po_view->setSource(QUrl{"qrc:/qml/main.qml"});
+po_view->show();
+
+QObject *po_rootObject = po_view->rootObject();
+qDebug() << "Root object name is: " << po_rootObject->objectName();
+```
+
+IMPORTANT: Something to note regarding this code above, is that you have now the possibility to hijack a QML element from C++, that means you can modify it before rendering it for instance
+
+== Running gui application
+As of now (on the snippets above) we are making use of the `QCoreApplication` class, that means we want to make console application, we won't need any display. Still, now we want some display, so instead of using the `QCoreApplication` we'll use `QGuiApplication` instead:
+
+```cpp
+int main(int argc, char *argv[])
+{
+    QGuiApplication a(argc, argv);
+
+    QQuickView o_view;
+    o_view.setSource(QUrl{"qrc:/qml/qml.qml"});
+    o_view.show();
+
+    return a.exec();
+}
+```
+
+NOTE: Now that we have this architecture, now we have enough informations to use the QML gui inside of the C++ side of the application.
+
+=== Accessing the object names
+The first thing that might be interesting is to display the objects name of them. Using the object from the C++ side of the app:
+
+```cpp
+QQuickView o_view;
+o_view.setSource(QUrl{"qrc:/qml/qml.qml"});
+o_view.show();
+
+QObject *po_rootObject = o_view.rootObject();
+qDebug() << "root object name: " << po_rootObject->objectName();
+qDebug() << "rect object name; " << po_rootObject->children().at(0)->objectName();
+```
+
+NOTE: If you take the architecture of the qml into account, you will see that the root object (being an `Item`) has a rectangle that contains also an object name named `rect`.
+
+=== Highjacking properties from C++
+Now that we see that you can access properties from the QML files into the C++, we're also able to modify those properties before or after the items are rendered by the `QQuickView` instance.
+
+```cpp
+QQuickView o_view;
+o_view.setSource(QUrl{"qrc:/qml/qml.qml"});
+o_view.show();
+
+QObject *po_rootObject = o_view->rootObject();
+
+// Hijack the qml and change it before handing control over
+// to the event loop
+QObject *po_object = po_rootObject->findChild<QObject *>("rect");
+if (!po_object) {
+    // return ?
+}
+QQuickItem *po_item = qobject_cast<QQuickItem *>(po_object);
+
+// Modify the color property
+QColor o_color{ Qt::blue };
+po_item->setProperty("color");
+
+// Modifying size
+po_item->setProperty("width", QVariant::fromValue(600));
+po_item->setProperty("height", QVariant::fromValue(600));
+
+return a.exec();
+```
+
+Still, you can also (if you want) using the method named 
+
+```cpp
+QQmlProperty::write(po_item, "height", QVariant::fromValue(800))
+``` 
+the method will modify the property `height` of the item that is stored inside of the `po_item` class.
+>>>>>>> 52af928 (Initial commit)
